@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Trabalho v8.3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#f1f5f9', sidebar: '#0f172a', 'sidebar-active': '#2563eb',
+                        primary: '#2563eb', violet: '#7c3aed', accent: '#f59e0b',
+                        success: '#10b981', info: '#0ea5e9', process: '#8b5cf6', closed: '#64748b'
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                        'glow': '0 0 20px rgba(37, 99, 235, 0.15)'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Fonte reduzida e compactação geral */
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; font-size: 13px; }
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .ql-editor { min-height: 120px; max-height: 350px; overflow-y: auto; font-size: 13px; background: white; border-radius: 0 0 1rem 1rem; line-height: 1.5; }
+        .ql-toolbar { border-radius: 1rem 1rem 0 0; background: #f8fafc; border-color: #e2e8f0 !important; }
+        input, select, textarea { transition: all 0.2s ease; }
+        input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(37,99,235,0.2); border-color: #2563eb !important; }
+        
+        .rich-content { max-height: 350px; overflow-y: auto; padding-right: 10px; color: #334155; line-height: 1.5; font-size: 13px; }
+        .rich-content b, .rich-content strong { font-weight: 700; color: #0f172a; }
+        .rich-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+        .rich-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.5rem; }
+        
+        .kanban-column { min-height: 200px; background: linear-gradient(to bottom, #f8fafc, #ffffff); }
+        .kanban-card { cursor: grab; border-left: 4px solid transparent; }
+        .kanban-card:active { cursor: grabbing; transform: scale(0.98); }
+        .drag-over { background-color: #f1f5f9; border: 2px dashed #94a3b8; }
+        .timeline-item::before { content: ''; position: absolute; left: 11px; top: 28px; bottom: -28px; width: 2px; background: #e2e8f0; }
+        .timeline-item:last-child::before { display: none; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden antialiased">
+
+    <div id="login-page" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-100 backdrop-blur-sm">
+        <form id="login-form" class="bg-white p-10 rounded-[2rem] shadow-2xl border border-slate-100 w-full max-w-sm space-y-6 text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary to-violet"></div>
+            <div class="h-16 w-16 rounded-[1rem] bg-gradient-to-br from-primary to-blue-700 mx-auto flex items-center justify-center text-white shadow-glow">
+                <i data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-black text-slate-800 tracking-tighter">Controle de Trabalho</h1>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Acesso Restrito</p>
+            </div>
+            <input type="password" id="login-password" placeholder="Senha de Acesso" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center outline-none text-base tracking-[0.3em] font-black focus:bg-white">
+            <button type="submit" class="w-full bg-slate-800 text-white py-3 rounded-xl font-black hover:bg-black transition-all shadow-lg active:scale-95">AUTENTICAR</button>
+        </form>
+    </div>
+
+    <aside class="w-64 bg-sidebar text-slate-300 flex flex-col flex-shrink-0 z-30 shadow-2xl">
+        <div class="h-16 flex items-center justify-between px-6 border-b border-slate-800/50 bg-slate-900/50">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-white shadow-glow"><i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i></div>
+                <span class="font-black text-white text-lg tracking-tighter leading-none">Controle<br><span class="text-[9px] text-slate-400 tracking-widest">Trabalho</span></span>
+            </div>
+            <button onclick="toggleSidebarEdit()" class="text-slate-500 hover:text-white transition-colors" title="Reordenar Menu"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
+        </div>
+        <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto" id="main-nav"></nav>
+        <div class="p-4 border-t border-slate-800/50 bg-slate-900/30" id="backup-zone"></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-background relative z-10">
+        <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center px-8 gap-4 z-20 sticky top-0">
+            <div class="relative flex items-center gap-2 w-full max-w-xl group">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400 group-focus-within:text-primary transition-colors"></i>
+                    <input type="text" id="global-search" placeholder="Busca integrada de processos..." class="w-full pl-9 pr-4 py-2 bg-slate-100 border border-transparent rounded-xl text-xs font-medium focus:bg-white focus:border-primary/30 transition-all">
+                </div>
+                <button id="btn-search-filter" class="p-2 bg-slate-100 rounded-xl text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-all flex items-center gap-2 border border-transparent">
+                    <i data-lucide="filter" class="w-3.5 h-3.5"></i><span class="text-[9px] font-black uppercase tracking-wider" id="search-filter-label">Tudo</span>
+                </button>
+                <div id="search-filter-menu" class="hidden absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-2xl p-2 z-50">
+                    <button onclick="setSearchFilter('all', 'Tudo')" class="w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 rounded-lg transition-colors">🌐 Todos os Módulos</button>
+                    <button onclick="setSearchFilter('registros', 'Registros')" class="w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 rounded-lg transition-colors">📄 Apenas Registros</button>
+                    <button onclick="setSearchFilter('conceitos', 'Conceitos')" class="w-full text-left px-3 py-2 text-xs font-bold hover:bg-slate-50 rounded-lg transition-colors">💡 Apenas Conceitos</button>
+                </div>
+                <div id="search-dropdown" class="hidden absolute top-full left-0 mt-2 w-full bg-white border border-slate-100 shadow-2xl rounded-2xl p-3 z-40 max-h-[60vh] overflow-y-auto"></div>
+            </div>
+            <div class="flex-1"></div>
+            <button onclick="logout()" class="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-destructive hover:text-white transition-all"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-6" id="page-container">
+            <div id="page-dashboard" class="page active space-y-6">
+                <div class="flex justify-between items-end">
+                    <div>
+                        <h1 class="text-3xl font-black text-slate-800 tracking-tight">Painel de Controle</h1>
+                        <p class="text-slate-500 font-medium text-xs mt-1">Resumo da sua produtividade no mês vigente.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4" id="stat-cards"></div>
+                <div class="bg-white border border-slate-100 rounded-[1.5rem] shadow-soft overflow-hidden">
+                    <div class="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                        <h2 class="text-lg font-bold text-slate-800">Esteira de Tramitação</h2>
+                        <div id="badge-tramitacao" class="px-4 py-1.5 text-[10px] font-black text-primary border border-primary/20 rounded-full bg-white shadow-sm tracking-widest uppercase"></div>
+                    </div>
+                    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4" id="status-cards"></div>
+                    <div id="dashboard-expanded" class="hidden border-t border-slate-100 bg-slate-50/80 p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="flex items-center gap-2">
+                                <div id="dash-expanded-dot" class="w-3 h-3 rounded-full shadow-sm border border-white"></div>
+                                <h3 id="dash-expanded-title" class="font-black text-slate-800 text-xs uppercase tracking-widest"></h3>
+                            </div>
+                            <button onclick="document.getElementById('dashboard-expanded').classList.add('hidden')" class="w-6 h-6 flex items-center justify-center bg-white rounded-full text-slate-400 hover:text-slate-800 shadow-sm"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                        <div class="bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm"><table class="w-full text-xs text-left"><tbody id="dashboard-expanded-body" class="divide-y divide-slate-50"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="page-registros" class="page space-y-6">
+                <div class="flex justify-between items-center"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Registros</h1><button onclick="openModal()" class="bg-primary text-white px-5 py-2.5 rounded-xl font-black text-xs shadow-glow hover:scale-105 transition-all flex items-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4"></i> Novo Lançamento</button></div>
+                
+                <div class="bg-white p-4 border border-slate-100 rounded-2xl shadow-sm flex flex-wrap gap-4 items-end">
+                    <div class="flex-1 min-w-[150px]"><label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Busca Rápida</label><input type="text" id="filtro-reg-busca" placeholder="Processo, Jurisdicionado..." class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary" oninput="renderRegistros()"></div>
+                    <div class="w-32"><label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Tipo</label><select id="filtro-reg-tipo" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary" onchange="renderRegistros()"><option value="">Todos</option><option value="Análise">Análise</option><option value="Revisão">Revisão</option><option value="Correção">Correção</option><option value="Pauta">Pauta</option><option value="Curso">Curso</option></select></div>
+                    <div class="w-32"><label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Data Inicial</label><input type="date" id="filtro-reg-data-i" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary" onchange="renderRegistros()"></div>
+                    <div class="w-32"><label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Data Final</label><input type="date" id="filtro-reg-data-f" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary" onchange="renderRegistros()"></div>
+                    <div class="w-36"><label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ordenação</label><select id="filtro-reg-ordem" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary" onchange="renderRegistros()"><option value="desc">Mais recentes</option><option value="asc">Mais antigos</option></select></div>
+                </div>
+
+                <div class="bg-white border border-slate-100 rounded-[1.5rem] shadow-soft overflow-hidden"><table class="w-full text-xs text-left"><thead class="bg-slate-50/80 border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-widest"><tr><th class="px-5 py-4">Data</th><th class="px-5 py-4">Tipo</th><th class="px-5 py-4">Processo / Curso</th><th class="px-5 py-4">Jurisdicionado(s)</th><th class="px-5 py-4 text-right">Ações</th></tr></thead><tbody id="table-registros-body" class="divide-y divide-slate-50"></tbody></table></div>
+            </div>
+
+            <div id="page-tramitacao" class="page space-y-6">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tight">Tramitação</h1>
+                    <div class="flex gap-2 bg-slate-200/50 p-1 rounded-xl">
+                        <button id="btn-view-table" onclick="setTramiteView('table')" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg bg-white shadow-sm text-primary transition-all">Lista</button>
+                        <button id="btn-view-kanban" onclick="setTramiteView('kanban')" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg text-slate-500 hover:text-slate-800 transition-all">Kanban</button>
+                    </div>
+                </div>
+                
+                <div id="tramitacao-table-view" class="bg-white border border-slate-100 rounded-[1.5rem] shadow-soft overflow-hidden block">
+                    <div class="p-4 border-b border-slate-50 flex gap-4 bg-slate-50/50 items-center">
+                        <div class="relative flex-1 max-w-xs">
+                            <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
+                            <input type="text" id="search-tramite" placeholder="Filtrar andamentos..." class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:border-primary outline-none transition-all" oninput="renderTramitacao()">
+                        </div>
+                        <label class="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer bg-white px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"><input type="checkbox" id="hide-encerrados" checked onchange="renderTramitacao()" class="w-3 h-3 accent-primary"> Ocultar Encerrados</label>
+                    </div>
+                    <table class="w-full text-xs text-left"><thead class="bg-slate-50/80 border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-widest"><tr><th class="px-5 py-4 sort-header" onclick="sortTramite('numeroProcesso')">Processo</th><th class="px-5 py-4">Tipo</th><th class="px-5 py-4">Jurisdicionado</th><th class="px-5 py-4 sort-header" onclick="sortTramite('status')">Fase / Status</th><th class="px-5 py-4 sort-header" onclick="sortTramite('statusUpdatedAt')">Desde (Editável)</th></tr></thead><tbody id="table-tramite-body" class="divide-y divide-slate-50"></tbody></table>
+                </div>
+
+                <div id="tramitacao-kanban-view" class="hidden grid grid-cols-1 md:grid-cols-4 gap-4"></div>
+            </div>
+
+            <div id="page-legislacao" class="page space-y-6">
+                <div class="flex justify-between items-end"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Legislação</h1><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Base de Conhecimento</p></div>
+                <div id="legislacao-list" class="space-y-4"></div>
+            </div>
+
+            <div id="page-pendencias" class="page space-y-6">
+                <div class="flex justify-between items-center"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Pendências</h1><button onclick="openModalPendencia()" class="bg-slate-800 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg hover:bg-black transition-all text-xs">Nova Tarefa</button></div>
+                <div id="pendencias-list" class="space-y-4"></div>
+            </div>
+
+            <div id="page-reunioes" class="page space-y-6">
+                <div class="flex justify-between items-center"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Atas & Reuniões</h1><button onclick="openModalReuniao()" class="bg-primary text-white px-6 py-2.5 rounded-xl font-black text-xs shadow-glow hover:scale-105 transition-all">Nova Ata</button></div>
+                <div id="reunioes-list" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+            </div>
+
+            <div id="page-estatisticas" class="page space-y-6 animate-fade-in">
+                <h1 class="text-3xl font-black text-slate-800 tracking-tight">Estatísticas e Produtividade</h1>
+                
+                <div class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft">
+                    <h3 class="font-black text-slate-800 text-base tracking-tight mb-4 flex items-center gap-2"><i data-lucide="trending-up" class="w-5 h-5 text-primary"></i> Volume de Produção Mensal</h3>
+                    <canvas id="chart-mensal" height="80"></canvas>
+                    <div class="mt-6 overflow-x-auto"><table class="w-full text-[11px] text-center"><tbody id="stat-mensal-body" class="divide-y divide-slate-100 font-bold"></tbody></table></div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft" id="container-analistas"></div>
+                    <div class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft" id="container-revisores"></div>
+                </div>
+            </div>
+
+            <div id="page-conceitos" class="page space-y-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Conceitos</h1><div class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft"><form id="form-conceito" class="space-y-4"><input type="text" id="conc-nome" placeholder="Título do Conceito" required class="w-full border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-primary bg-slate-50"><div id="conc-editor"></div><button type="submit" class="bg-primary text-white px-6 py-3 rounded-xl font-black text-xs shadow-glow w-full">Salvar Conceito</button></form></div><div id="conceitos-list" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6"></div></div>
+            <div id="page-tags" class="page space-y-6"><h1 class="text-3xl font-black text-slate-800 tracking-tight">Gestor de Tags</h1><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"><div id="manage-juris" class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft"></div><div id="manage-teses" class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft"></div><div id="manage-decisoes" class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft"></div><div id="manage-leis" class="bg-white p-6 border border-slate-100 rounded-[1.5rem] shadow-soft"></div></div></div>
+        </div>
+    </main>
+
+    <div id="modal-dossie" class="hidden fixed inset-0 bg-slate-900/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col border border-white/20">
+            <header class="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                <div><h3 class="text-xl font-black text-slate-800 tracking-tight">Histórico do Processo</h3><p id="dossie-process-number" class="text-primary font-mono font-bold mt-1 text-sm"></p></div>
+                <button onclick="document.getElementById('modal-dossie').classList.add('hidden')" class="h-10 w-10 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:text-destructive hover:bg-red-50 transition-colors"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </header>
+            <div class="flex-1 overflow-y-auto p-8 bg-white"><div class="space-y-0 relative" id="dossie-timeline-container"></div></div>
+        </div>
+    </div>
+
+    <div id="modal-registro" class="hidden fixed inset-0 bg-slate-900/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col border border-white/20">
+            <header class="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
+                <h3 class="text-xl font-black text-slate-800 tracking-tight" id="modal-title">Novo Registro</h3>
+                <button onclick="closeModal()" class="h-10 w-10 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm hover:text-destructive hover:bg-red-50 transition-colors"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </header>
+            <div class="flex-1 overflow-y-auto p-8 bg-white">
+                <form id="form-registro" class="space-y-6" onsubmit="event.preventDefault(); handleRegistroSubmit();">
+                    <input type="hidden" id="reg-id">
+                    
+                    <div class="grid grid-cols-2 gap-6">
+                        <div><label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Data Oficial</label><input type="date" id="reg-data" required class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none"></div>
+                        <div><label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Tipo de Entrada</label><select id="reg-tipo" required onchange="toggleFields()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none"><option value="Análise">Análise</option><option value="Revisão">Revisão</option><option value="Correção">Correção</option><option value="Pauta">Pauta</option><option value="Curso">Curso</option></select></div>
+                    </div>
+
+                    <div id="wrap-processo">
+                        <label id="label-processo" class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Processo / Identificador</label>
+                        <input type="text" id="reg-processo" placeholder="0000/2026" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm font-bold focus:bg-white outline-none">
+                        <div id="aviso-duplicidade" class="hidden px-4 py-2 mt-2 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black uppercase border border-amber-200">⚠️ Processo já tem registro. Verifique o dossiê para consistência.</div>
+                    </div>
+
+                    <div class="field-analise">
+                        <div class="flex justify-between items-center mb-1"><label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Jurisdicionado(s)</label><button type="button" onclick="addJurisRow()" class="bg-slate-200 text-slate-600 p-1 rounded-md hover:bg-slate-300 transition-colors"><i data-lucide="plus" class="w-3 h-3"></i></button></div>
+                        <div id="juris-rows-container" class="space-y-2"></div>
+                    </div>
+
+                    <div class="field-analise">
+                        <label id="label-analista-extra" class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Responsável</label><input type="text" id="reg-analista" list="list-analistas" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none">
+                    </div>
+
+                    <div class="p-5 rounded-[1.5rem] bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 field-analise shadow-inner">
+                        <div class="flex justify-between items-center text-[10px] font-black uppercase text-primary tracking-widest mb-3">Movimentações / Fase<button type="button" onclick="addMovRow()" class="bg-blue-600 text-white p-1.5 rounded-lg hover:bg-blue-800 transition-colors shadow-sm"><i data-lucide="plus" class="w-3 h-3"></i></button></div>
+                        <div id="mov-rows-container" class="space-y-2"></div>
+                    </div>
+
+                    <div class="space-y-3 p-5 rounded-[1.5rem] bg-slate-50 border border-slate-200 field-analise">
+                        <div class="flex justify-between items-center text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Legislação Aplicada <button type="button" onclick="addLegRow()" class="bg-slate-800 text-white p-1.5 rounded-lg hover:bg-black transition-colors"><i data-lucide="plus" class="w-3 h-3"></i></button></div>
+                        <div id="leg-rows-container" class="space-y-2"></div>
+                    </div>
+
+                    <div class="space-y-2 field-analise relative">
+                        <label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Decisões Propostas (Separe por vírgula)</label>
+                        <input type="text" id="reg-decisoes" placeholder="Ex: Ilegalidade, Multa..." class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none">
+                        <div id="decisoes-sugestoes" class="flex flex-wrap gap-1.5 mt-2 absolute z-10 bg-white border border-slate-200 p-2 rounded-xl shadow-lg empty:hidden"></div>
+                    </div>
+
+                    <div class="space-y-2 field-analise relative mt-4">
+                        <label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Teses e Fundamentos (Separe por vírgula)</label>
+                        <input type="text" id="reg-teses" placeholder="Ex: Prescrição..." class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none">
+                        <div id="teses-sugestoes" class="flex flex-wrap gap-1.5 mt-2 absolute z-10 bg-white border border-slate-200 p-2 rounded-xl shadow-lg empty:hidden"></div>
+                    </div>
+
+                    <div class="space-y-2 field-extra mt-4">
+                        <label class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Observações Detalhadas</label>
+                        <div id="reg-editor" class="shadow-sm"></div>
+                    </div>
+                    <button type="submit" class="w-full bg-primary text-white py-4 rounded-2xl font-black text-sm shadow-glow hover:scale-[1.02] active:scale-95 transition-all mt-4">SALVAR NO BANCO</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-pendencia" class="hidden fixed inset-0 bg-slate-900/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"><div class="bg-white rounded-[2rem] w-full max-w-lg p-8 space-y-4 shadow-2xl border border-white/20"><h3 class="font-black text-xl text-slate-800 tracking-tight" id="pen-modal-title">Sua Tarefa</h3><input type="hidden" id="pen-id"><input type="text" id="pen-titulo" placeholder="O que precisa ser feito?" class="w-full border-2 border-slate-200 bg-slate-50 p-3 rounded-xl font-black text-sm outline-none focus:bg-white transition-all"><div id="pen-editor" class="shadow-sm border-slate-200"></div><div class="flex gap-3 pt-2"><button onclick="document.getElementById('modal-pendencia').classList.add('hidden')" class="flex-1 border-2 border-slate-200 p-3 rounded-xl font-bold text-xs text-slate-500 hover:bg-slate-50">Cancelar</button><button onclick="savePendencia()" class="flex-1 bg-slate-800 text-white p-3 rounded-xl text-xs font-black shadow-lg">Salvar Dados</button></div></div></div>
+    <div id="modal-reuniao" class="hidden fixed inset-0 bg-slate-900/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"><div class="bg-white rounded-[2rem] w-full max-w-lg p-8 space-y-4 shadow-2xl border border-white/20"><h3 class="font-black text-xl text-slate-800 tracking-tight" id="reu-modal-title">Registro de Reunião</h3><input type="hidden" id="reu-id"><input type="date" id="reu-data" class="w-full border-2 border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-bold outline-none focus:bg-white"><input type="text" id="reu-titulo" placeholder="Pauta Central" class="w-full border-2 border-slate-200 bg-slate-50 p-3 rounded-xl font-black text-sm outline-none focus:bg-white transition-all"><div id="reu-editor" class="shadow-sm border-slate-200"></div><div class="flex gap-3 pt-2"><button onclick="document.getElementById('modal-reuniao').classList.add('hidden')" class="flex-1 border-2 border-slate-200 p-3 rounded-xl font-bold text-xs text-slate-500 hover:bg-slate-50">Descartar</button><button onclick="saveReuniao()" class="flex-1 bg-primary text-white p-3 rounded-xl font-black text-xs shadow-glow">Documentar Ata</button></div></div></div>
+
+    <datalist id="list-juris"></datalist>
+    <datalist id="list-analistas"></datalist>
+    <datalist id="list-leis"></datalist>
+    <datalist id="list-artigos-dynamic"></datalist>
+
+    ```
+<script>
+        // --- ESTADO CENTRAL E CONFIGURAÇÕES ---
+        const NAV_ITEMS = [
+            { id: 'dashboard', title: 'Painel Geral', icon: 'layout-dashboard' },
+            { id: 'registros', title: 'Registros', icon: 'clipboard-list' },
+            { id: 'tramitacao', title: 'Tramitação', icon: 'arrow-right-left' },
+            { id: 'legislacao', title: 'Legislação', icon: 'scale' },
+            { id: 'pendencias', title: 'Pendências', icon: 'check-square' },
+            { id: 'reunioes', title: 'Atas & Reuniões', icon: 'users' },
+            { id: 'estatisticas', title: 'Estatísticas', icon: 'bar-chart-3' },
+            { id: 'conceitos', title: 'Conceitos', icon: 'book-open' },
+            { id: 'tags', title: 'Gestor de Tags', icon: 'tag' }
+        ];
+
+        let state = {
+            registros: JSON.parse(localStorage.getItem('gj_registros') || '[]'),
+            reunioes: JSON.parse(localStorage.getItem('gj_reunioes') || '[]'),
+            pendencias: JSON.parse(localStorage.getItem('gj_pendencias') || '[]'),
+            conceitos: JSON.parse(localStorage.getItem('gj_conceitos') || '[]'),
+            legOrder: JSON.parse(localStorage.getItem('gj_leg_order') || '[]'),
+            navOrder: JSON.parse(localStorage.getItem('gj_nav_order') || 'null'),
+            tramiteView: localStorage.getItem('gj_tramite_view') || 'table',
+            searchFilter: 'all',
+            sortTramite: { field: 'statusUpdatedAt', dir: 'desc' },
+            currentPage: 'dashboard'
+        };
+
+        let editors = {}; let charts = {};
+
+        // --- INICIALIZAÇÃO ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initAuth(); initNavigation(); initEditors(); initBackup(); initGlobalSearch(); initForms();
+            setupTagAutocomplete('reg-teses', 'teses-sugestoes', () => { const s = new Set(); state.registros.forEach(r => (r.teses||[]).forEach(t => s.add(t))); return Array.from(s); });
+            setupTagAutocomplete('reg-decisoes', 'decisoes-sugestoes', () => { const s = new Set(); state.registros.forEach(r => (r.decisoes||[]).forEach(d => s.add(d))); return Array.from(s); });
+            if(sessionStorage.getItem('gj_auth') === 'true') showApp();
+        });
+
+        function initAuth() {
+            document.getElementById('login-form').onsubmit = (e) => {
+                e.preventDefault(); if(document.getElementById('login-password').value === '2425') { sessionStorage.setItem('gj_auth', 'true'); showApp(); }
+            };
+        }
+
+        function showApp() { document.getElementById('login-page').style.display='none'; refreshAll(); }
+
+        // --- NAVEGAÇÃO LATERAL ---
+        function initNavigation() {
+            const order = state.navOrder || NAV_ITEMS.map(i => i.id);
+            const nav = document.getElementById('main-nav'); nav.innerHTML = '';
+            order.forEach(id => {
+                const item = NAV_ITEMS.find(i => i.id === id); if(!item) return;
+                const a = document.createElement('div');
+                a.className = "flex items-center gap-3 px-4 py-3.5 rounded-2xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all cursor-pointer font-bold text-xs group";
+                a.id = `nav-${item.id}`; 
+                a.innerHTML = `<i data-lucide="${item.icon}" class="w-4 h-4"></i> <span class="flex-1">${item.title}</span>
+                               <div class="hidden group-hover:flex gap-1">
+                                    <button onclick="moveNav('${id}', -1, event)" class="p-1 hover:text-primary transition-colors"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>
+                                    <button onclick="moveNav('${id}', 1, event)" class="p-1 hover:text-primary transition-colors"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>
+                               </div>`;
+                a.onclick = () => navigateTo(item.id); nav.appendChild(a);
+            });
+            lucide.createIcons();
+            const active = document.getElementById(`nav-${state.currentPage}`); if(active) active.classList.add('bg-primary/10', 'text-primary', 'shadow-sm');
+        }
+
+        window.moveNav = (id, dir, e) => {
+            e.stopPropagation(); const order = state.navOrder || NAV_ITEMS.map(i => i.id);
+            const idx = order.indexOf(id); const nIdx = idx + dir;
+            if(nIdx < 0 || nIdx >= order.length) return;
+            order.splice(idx, 1); order.splice(nIdx, 0, id);
+            state.navOrder = order; localStorage.setItem('gj_nav_order', JSON.stringify(order)); initNavigation();
+        };
+
+        function navigateTo(id) {
+            state.currentPage = id;
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(`page-${id}`).classList.add('active');
+            document.querySelectorAll('#main-nav > div').forEach(a => a.classList.remove('bg-primary/10', 'text-primary', 'shadow-sm'));
+            const act = document.getElementById(`nav-${id}`); if(act) act.classList.add('bg-primary/10', 'text-primary', 'shadow-sm');
+            refreshCurrentPage();
+        }
+
+        function refreshCurrentPage() {
+            const p = state.currentPage;
+            if(p==='dashboard') renderDashboard(); if(p==='registros') renderRegistros();
+            if(p==='tramitacao') { setTramiteView(state.tramiteView); renderTramitacao(); }
+            if(p==='legislacao') renderLegislacao(); if(p==='pendencias') renderPendencias(); 
+            if(p==='reunioes') renderReunioes(); if(p==='estatisticas') renderEstatisticas(); 
+            if(p==='conceitos') renderConceitos(); if(p==='tags') renderManageTags();
+            lucide.createIcons();
+        }
+
+        function refreshAll() { refreshCurrentPage(); updateDatalists(); }
+
+        // --- DASHBOARD (Com Total Geral e Filtro rigoroso por mês atual) ---
+        function getBestMonth(tipo) {
+            const map = {};
+            state.registros.filter(r => r.tipo === tipo).forEach(r => {
+                const d = r.data.split('-'); if(!d[1]) return;
+                const mNames = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+                const key = `${mNames[parseInt(d[1])-1]}/${d[0].slice(2)}`; map[key] = (map[key] || 0) + 1;
+            });
+            let best = null; for(let k in map) { if(!best || map[k] > best.count) best = { label: k, count: map[k] }; }
+            return best;
+        }
+
+        function renderDashboard() {
+            const now = new Date();
+            const esteMes = state.registros.filter(r => {
+                const d = r.data.split('-'); return d[1] && parseInt(d[1])-1 === now.getMonth() && parseInt(d[0]) === now.getFullYear();
+            });
+            const config = [
+                { id: 'Análise', l: 'Análises', i: 'file-search', c: 'text-primary', bg: 'bg-blue-50' },
+                { id: 'Revisão', l: 'Revisões', i: 'clipboard-check', c: 'text-violet', bg: 'bg-purple-50' },
+                { id: 'Correção', l: 'Correções', i: 'pen-line', c: 'text-accent', bg: 'bg-amber-50' },
+                { id: 'Pauta', l: 'Pautas', i: 'calendar-days', c: 'text-slate-500', bg: 'bg-slate-100' },
+                { id: 'Curso', l: 'Cursos', i: 'graduation-cap', c: 'text-success', bg: 'bg-green-50' }
+            ];
+            
+            const div = document.getElementById('stat-cards'); div.innerHTML = '';
+            config.forEach(t => {
+                const filtradosMes = esteMes.filter(r => r.tipo === t.id); 
+                const best = getBestMonth(t.id);
+                const totalGeral = state.registros.filter(r => r.tipo === t.id).length; // Total Histórico
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-5 border border-slate-100 rounded-[1.5rem] shadow-soft hover:shadow-lg cursor-pointer transition-all active:scale-95 group flex flex-col justify-between";
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest">${t.l}</span>
+                            <div class="p-1.5 rounded-lg ${t.bg} group-hover:scale-110 transition-transform"><i data-lucide="${t.i}" class="w-4 h-4 ${t.c}"></i></div>
+                        </div>
+                        <div class="text-3xl font-black text-slate-800 tracking-tighter">${filtradosMes.length}</div>
+                    </div>
+                    <div class="flex justify-between items-center mt-3 border-t border-slate-50 pt-3">
+                        <div class="text-[9px] font-bold text-slate-400 flex items-center gap-1">${best ? `<i data-lucide="trophy" class="w-3 h-3 text-amber-500"></i> ${best.label} (${best.count})` : 'Sem histórico'}</div>
+                        <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded-md">Total: ${totalGeral}</div>
+                    </div>`;
+                card.onclick = () => expandDash(`MÊS ATUAL: ${t.l}`, filtradosMes);
+                div.appendChild(card);
+            });
+
+            const tramitaveis = state.registros.filter(r => r.tipo === 'Análise' || r.tipo === 'Revisão');
+            const statusDiv = document.getElementById('status-cards'); statusDiv.innerHTML = '';
+            let emTramite = 0;
+            const statusOpts = [{id:'em_andamento',l:'Em andamento',c:'bg-success', b:'border-success/20'},{id:'chefe_gabinete',l:'Chefe de Gabinete',c:'bg-info', b:'border-info/20'},{id:'conselheiro',l:'Com Conselheiro',c:'bg-process', b:'border-process/20'},{id:'encerrado',l:'Encerrados',c:'bg-closed', b:'border-closed/20'}];
+            
+            statusOpts.forEach(opt => {
+                const list = tramitaveis.filter(r => (r.status || 'em_andamento') === opt.id);
+                if(opt.id !== 'encerrado') emTramite += list.length;
+                const card = document.createElement('div');
+                card.className = `p-4 bg-white rounded-2xl flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-all border-2 border-transparent hover:${opt.b} shadow-sm`;
+                card.innerHTML = `<div class="w-3 h-3 rounded-full ${opt.c} shadow-sm ring-4 ring-white"></div><div><div class="font-black text-xl text-slate-800">${list.length}</div><div class="text-[9px] uppercase font-black text-slate-400 tracking-widest">${opt.l}</div></div>`;
+                card.onclick = () => expandDash(`STATUS: ${opt.l}`, list);
+                statusDiv.appendChild(card);
+            });
+            document.getElementById('badge-tramitacao').innerText = `EM TRAMITAÇÃO: ${emTramite}`;
+            lucide.createIcons();
+        }
+
+        window.expandDash = (title, list) => {
+            const div = document.getElementById('dashboard-expanded');
+            document.getElementById('dash-expanded-title').innerText = title;
+            document.getElementById('dashboard-expanded-body').innerHTML = list.map(r => `
+                <tr class="hover:bg-slate-100 cursor-pointer transition-colors group" onclick="openDossie('${r.numeroProcesso}')">
+                    <td class="px-6 py-3 font-mono font-black text-primary group-hover:underline decoration-primary/30 text-sm">${r.numeroProcesso || 'Extra'}</td>
+                    <td class="px-6 py-3 text-[9px] uppercase font-black text-slate-400 tracking-widest">${r.tipo}</td>
+                    <td class="px-6 py-3 font-bold text-slate-700 text-xs">${r.analista || 'Responsável'}</td>
+                </tr>`).join('') || '<tr><td class="p-6 text-center italic text-slate-400 font-medium text-xs">Nenhum processo listado.</td></tr>';
+            div.classList.remove('hidden'); div.scrollIntoView({behavior: 'smooth', block: 'end'});
+        };
+
+        // --- DOSSIÊ (LINHA DO TEMPO V3 COM HISTÓRICO DE MOVIMENTAÇÕES) ---
+        window.openDossie = (numProcesso) => {
+            if(!numProcesso || numProcesso === 'Extra') return;
+            const historico = state.registros.filter(r => r.numeroProcesso === numProcesso).sort((a,b) => new Date(a.data) - new Date(b.data));
+            if(historico.length === 0) return;
+
+            document.getElementById('dossie-process-number').innerText = numProcesso;
+            const container = document.getElementById('dossie-timeline-container');
+            container.innerHTML = historico.map(r => `
+                <div class="relative pl-10 py-5 timeline-item group">
+                    <div class="absolute left-0 top-8 w-6 h-6 rounded-full border-4 border-white bg-primary shadow-sm z-10 group-hover:scale-125 transition-transform"></div>
+                    <div class="bg-slate-50 border border-slate-100 rounded-[1.5rem] p-6 shadow-sm hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-[9px] font-black bg-white px-3 py-1.5 rounded-xl border border-slate-200 uppercase tracking-widest text-slate-500 shadow-sm">${r.data.split('-').reverse().join('/')}</span>
+                            <span class="text-[9px] font-black text-primary uppercase bg-primary/10 px-3 py-1.5 rounded-xl tracking-widest">${r.tipo}</span>
+                        </div>
+                        ${r.jurisdicionado ? `<div class="text-sm font-black text-slate-800 mb-1">${r.jurisdicionado.replace(/;/g, ' &bull; ')}</div>` : ''}
+                        <div class="text-[10px] text-slate-500 font-medium mb-3">Responsável: <span class="font-bold text-slate-800">${r.analista || 'Responsável'}</span></div>
+                        
+                        ${(r.movimentacoes && r.movimentacoes.length > 0) ? `<div class="bg-white p-4 rounded-xl border border-slate-100 mb-3 space-y-2">
+                            <div class="text-[9px] font-black uppercase text-slate-400 tracking-widest border-b pb-1 mb-2">Histórico de Fases</div>
+                            ${r.movimentacoes.sort((a,b)=>new Date(a.data)-new Date(b.data)).map(m => `
+                                <div class="flex justify-between text-xs font-bold">
+                                    <span class="text-primary">${m.status.replace('_', ' ')}</span>
+                                    <span class="text-slate-400">${m.data.split('-').reverse().join('/')}</span>
+                                </div>
+                            `).join('')}
+                        </div>` : (r.status ? `<div class="bg-white p-3 rounded-xl border border-slate-100 mb-3 text-[9px] font-black uppercase text-slate-400 tracking-widest">Fase: <span class="text-primary">${r.status.replace('_', ' ')}</span> <span class="text-slate-300 ml-1">(${r.statusUpdatedAt ? r.statusUpdatedAt.split('-').reverse().join('/') : ''})</span></div>` : '')}
+
+                        ${((r.decisoes && r.decisoes.length) || (r.teses && r.teses.length)) ? `<div class="bg-white p-3 rounded-xl border border-slate-100 space-y-2">
+                            ${(r.decisoes && r.decisoes.length) ? `<div class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Decisão: <span class="text-violet-600">${r.decisoes.join(', ')}</span></div>` : ''}
+                            ${(r.teses && r.teses.length) ? `<div class="text-[9px] font-black uppercase text-slate-400 tracking-widest">Teses: <span class="text-slate-700">${r.teses.join(', ')}</span></div>` : ''}
+                        </div>` : ''}
+                        
+                        <button onclick="editReg('${r.id}'); document.getElementById('modal-dossie').classList.add('hidden')" class="mt-4 text-[10px] font-black text-primary hover:text-blue-800 uppercase tracking-widest flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> Abrir Registro</button>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('modal-dossie').classList.remove('hidden');
+            lucide.createIcons();
+        };
+
+        // --- REGISTROS (Auto-Complete Inteligente e Múltiplos Tipos) ---
+        function initForms() {
+            document.getElementById('reg-processo').oninput = (e) => {
+                const val = e.target.value.trim();
+                const currentId = document.getElementById('reg-id').value;
+                const exists = state.registros.some(r => r.numeroProcesso === val && r.id !== currentId && val !== '');
+                document.getElementById('aviso-duplicidade').classList.toggle('hidden', !exists);
+            };
+            document.getElementById('form-conceito').onsubmit = (e) => { e.preventDefault(); state.conceitos.push({ id: crypto.randomUUID(), nome: document.getElementById('conc-nome').value, conteudo: editors.conceito.root.innerHTML }); saveAll(); e.target.reset(); editors.conceito.root.innerHTML=''; renderConceitos(); };
+        }
+
+        function toggleFields() {
+            const t = document.getElementById('reg-tipo').value;
+            const isCorrecao = (t === 'Correção');
+            const isAnaliseRevisao = (t === 'Análise' || t === 'Revisão');
+            
+            document.getElementById('wrap-processo').style.display = 'block';
+            document.getElementById('label-processo').innerText = t === 'Curso' ? 'Nome do Curso / Evento' : 'Processo / Identificador';
+            
+            // Na Correção, oculta Jurisdicionado, Legislação, Status Interno... Fica só o básico.
+            document.querySelectorAll('.field-analise').forEach(el => el.style.display = isAnaliseRevisao ? 'block' : 'none');
+            // Oculta também a área de observações extras se for Correção, Pauta ou Curso
+            document.querySelectorAll('.field-extra').forEach(el => el.style.display = (isCorrecao || t === 'Pauta' || t === 'Curso') ? 'none' : 'block');
+        }
+
+        // Múltiplos Jurisdicionados
+        function addJurisRow(val = '') {
+            const cont = document.getElementById('juris-rows-container'); const row = document.createElement('div');
+            row.className = "flex gap-2 items-center juris-row mb-2";
+            row.innerHTML = `<input type="text" placeholder="Nome do Órgão/Jurisdicionado" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white outline-none val-juris" list="list-juris" value="${val}">
+                             <button type="button" onclick="this.parentElement.remove()" class="p-2 text-slate-300 hover:text-destructive hover:bg-red-50 rounded-xl transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            cont.appendChild(row); lucide.createIcons();
+        }
+
+        // Movimentação Dinâmica
+        function addMovRow(val = { status: 'em_andamento', data: '' }) {
+            const cont = document.getElementById('mov-rows-container'); const row = document.createElement('div');
+            const dataVal = val.data || new Date().toISOString().split('T')[0];
+            row.className = "flex gap-2 items-center mov-row animate-fade-in mb-2 bg-white p-2 rounded-xl border border-slate-100 shadow-sm";
+            row.innerHTML = `
+                <select class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:border-primary outline-none mov-status">
+                    <option value="em_andamento" ${val.status==='em_andamento'?'selected':''}>🟢 Em andamento</option>
+                    <option value="chefe_gabinete" ${val.status==='chefe_gabinete'?'selected':''}>🔵 Chefe de Gabinete</option>
+                    <option value="conselheiro" ${val.status==='conselheiro'?'selected':''}>🟣 Com Conselheiro</option>
+                    <option value="encerrado" ${val.status==='encerrado'?'selected':''}>⚫ Encerrado</option>
+                </select>
+                <input type="date" class="w-1/3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold focus:border-primary outline-none mov-data" value="${dataVal}">
+                <button type="button" onclick="this.parentElement.remove()" class="p-2 text-slate-300 hover:text-destructive hover:bg-red-50 rounded-lg transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            cont.appendChild(row); lucide.createIcons();
+        }
+
+        // Legislação Dinâmica e Autocomplete Focado
+        function addLegRow(val = { lei: '', art: '', desc: '' }) {
+            const cont = document.getElementById('leg-rows-container'); const row = document.createElement('div');
+            row.className = "flex gap-2 items-start leg-row animate-fade-in bg-white p-3 rounded-xl border border-slate-100 shadow-sm mb-2";
+            row.innerHTML = `
+                <input type="text" placeholder="Lei (Ex: LRF)" class="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black leg-lei focus:bg-white outline-none transition-all" list="list-leis" value="${val.lei}" onchange="updateArtigosList(this)">
+                <input type="text" placeholder="Artigo" class="w-1/4 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black leg-art focus:bg-white outline-none transition-all" list="list-artigos-dynamic" value="${val.art}" oninput="autoFillLeg(this)" onfocus="updateArtigosList(this.previousElementSibling)">
+                <textarea placeholder="Assunto (Enter = Nova linha)" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold leg-desc leg-desc-area resize-none focus:bg-white outline-none transition-all" oninput="this.style.height=''; this.style.height=this.scrollHeight+'px'">${val.desc || ''}</textarea>
+                <button type="button" onclick="this.parentElement.remove()" class="p-2 text-slate-300 hover:text-destructive hover:bg-red-50 rounded-lg transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+            cont.appendChild(row); lucide.createIcons();
+            setTimeout(() => { const ta = row.querySelector('textarea'); ta.style.height = ta.scrollHeight + 'px'; }, 10);
+        }
+
+        // Filtra artigos pela lei selecionada
+        window.updateArtigosList = (leiInput) => {
+            const lei = leiInput.value.trim();
+            const arts = new Set();
+            if (lei) {
+                state.registros.forEach(r => {
+                    (r.legislacaoComplexa || []).forEach(l => { if (l.lei === lei && l.art) arts.add(l.art); });
+                });
+            }
+            document.getElementById('list-artigos-dynamic').innerHTML = Array.from(arts).sort().map(a => `<option value="${a}">`).join('');
+        };
+
+        window.autoFillLeg = (input) => {
+            const row = input.parentElement; const lei = row.querySelector('.leg-lei').value.trim(); const art = input.value.trim();
+            if(!lei || !art) return;
+            const match = state.registros.flatMap(r => r.legislacaoComplexa || []).find(l => l.lei === lei && l.art === art);
+            if(match) { const ta = row.querySelector('.leg-desc'); ta.value = match.desc; ta.style.height = ''; ta.style.height = ta.scrollHeight + 'px'; }
+        };
+
+        // Tags Ocultas Inteligentes
+        function setupTagAutocomplete(inputId, suggId, getSetFn) {
+            const input = document.getElementById(inputId); const suggDiv = document.getElementById(suggId);
+            input.addEventListener('input', () => {
+                const parts = input.value.split(','); const currentWord = parts[parts.length - 1].trim().toLowerCase();
+                if(currentWord.length === 0) { suggDiv.innerHTML = ''; return; }
+                const allTags = getSetFn();
+                const matches = allTags.filter(t => t.toLowerCase().includes(currentWord) && t.toLowerCase() !== currentWord).slice(0, 5);
+                if(matches.length > 0) {
+                    suggDiv.innerHTML = matches.map(m => `<button type="button" onclick="insertTag('${inputId}', '${m}', '${suggId}')" class="text-[9px] font-black bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg hover:bg-slate-800 hover:text-white transition-all cursor-pointer">${m}</button>`).join('');
+                } else { suggDiv.innerHTML = ''; }
+            });
+        }
+
+        window.insertTag = (inputId, tag, suggId) => {
+            const input = document.getElementById(inputId);
+            let parts = input.value.split(',').map(x => x.trim());
+            parts.pop(); parts.push(tag);
+            input.value = parts.join(', ') + ', ';
+            input.focus(); document.getElementById(suggId).innerHTML = '';
+        };
+
+        function handleRegistroSubmit() {
+            const id = document.getElementById('reg-id').value; const tipo = document.getElementById('reg-tipo').value;
+            const data = {
+                data: document.getElementById('reg-data').value, tipo: tipo,
+                numeroProcesso: document.getElementById('reg-processo').value.trim(),
+                observacoes: editors.registro.root.innerHTML
+            };
+
+            if (tipo === 'Correção' || tipo === 'Pauta' || tipo === 'Curso') {
+                // Preserva a simplicidade da correção e pauta
+                data.status = 'encerrado'; data.statusUpdatedAt = new Date().toISOString().split('T')[0];
+            } else {
+                // Análise ou Revisão
+                data.jurisdicionadosArr = Array.from(document.querySelectorAll('.val-juris')).map(i => i.value.trim()).filter(Boolean);
+                data.jurisdicionado = data.jurisdicionadosArr.join('; ');
+                data.analista = document.getElementById('reg-analista').value.trim() || 'Responsável';
+                
+                let movs = Array.from(document.querySelectorAll('.mov-row')).map(r => ({
+                    status: r.querySelector('.mov-status').value, data: r.querySelector('.mov-data').value
+                })).filter(x => x.data);
+                movs.sort((a,b) => new Date(a.data) - new Date(b.data));
+                
+                data.movimentacoes = movs;
+                if(movs.length > 0) { const last = movs[movs.length - 1]; data.status = last.status; data.statusUpdatedAt = last.data; } 
+                else { data.status = 'em_andamento'; data.statusUpdatedAt = new Date().toISOString().split('T')[0]; }
+
+                data.legislacaoComplexa = Array.from(document.querySelectorAll('.leg-row')).map(r => ({
+                    lei: r.querySelector('.leg-lei').value.trim(), art: r.querySelector('.leg-art').value.trim(), desc: r.querySelector('.leg-desc').value.trim()
+                })).filter(x => x.lei);
+                
+                data.decisoes = document.getElementById('reg-decisoes').value.split(',').map(x=>x.trim()).filter(Boolean);
+                data.teses = document.getElementById('reg-teses').value.split(',').map(x=>x.trim()).filter(Boolean);
+            }
+
+            if(id) { const idx=state.registros.findIndex(x=>x.id===id); state.registros[idx]={...state.registros[idx], ...data}; }
+            else { state.registros.push({id:crypto.randomUUID(), ...data}); }
+            saveAll(); closeModal(); refreshAll();
+        }
+
+        function renderRegistros() {
+            const busca = document.getElementById('filtro-reg-busca') ? document.getElementById('filtro-reg-busca').value.toLowerCase() : '';
+            const tipo = document.getElementById('filtro-reg-tipo') ? document.getElementById('filtro-reg-tipo').value : '';
+            const dataI = document.getElementById('filtro-reg-data-i') ? document.getElementById('filtro-reg-data-i').value : '';
+            const dataF = document.getElementById('filtro-reg-data-f') ? document.getElementById('filtro-reg-data-f').value : '';
+            const ordem = document.getElementById('filtro-reg-ordem') ? document.getElementById('filtro-reg-ordem').value : 'desc';
+
+            let list = state.registros.filter(r => {
+                let m = true;
+                if(tipo && r.tipo !== tipo) m = false;
+                if(dataI && r.data < dataI) m = false;
+                if(dataF && r.data > dataF) m = false;
+                if(busca) {
+                    const str = [r.numeroProcesso, r.jurisdicionado].join(' ').toLowerCase();
+                    if(!str.includes(busca)) m = false;
+                }
+                return m;
+            });
+
+            list.sort((a,b) => ordem === 'desc' ? new Date(b.data) - new Date(a.data) : new Date(a.data) - new Date(b.data));
+
+            document.getElementById('table-registros-body').innerHTML = list.map(r => `
+                <tr class="hover:bg-slate-50 transition-colors cursor-pointer group border-b border-slate-50" onclick="if(!event.target.closest('button')) openDossie('${r.numeroProcesso}')">
+                    <td class="px-5 py-4 text-[9px] font-black text-slate-400 tracking-widest">${r.data.split('-').reverse().join('/')}</td>
+                    <td class="px-5 py-4"><span class="px-2 py-1 rounded-md border border-slate-200 bg-white text-[8px] font-black uppercase tracking-widest shadow-sm">${r.tipo}</span></td>
+                    <td class="px-5 py-4 font-mono font-bold text-sm text-primary group-hover:underline decoration-primary/30">${r.numeroProcesso || '—'}</td>
+                    <td class="px-5 py-4 text-xs font-bold text-slate-600 truncate max-w-[200px]">${r.jurisdicionado ? r.jurisdicionado.replace(/;/g, ' &bull; ') : '—'}</td>
+                    <td class="px-5 py-4 text-right">
+                        <button onclick="editReg('${r.id}'); event.stopPropagation();" class="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-lg transition-all"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="deleteReg('${r.id}'); event.stopPropagation();" class="p-2 text-slate-400 hover:text-destructive hover:bg-red-50 rounded-lg transition-all"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </td>
+                </tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-slate-400 italic font-medium">Nenhum registro atende aos filtros.</td></tr>';
+            lucide.createIcons();
+        }
+
+        window.editReg = (id) => {
+            const r = state.registros.find(x=>x.id===id); openModal();
+            document.getElementById('reg-id').value=r.id; document.getElementById('reg-data').value=r.data;
+            document.getElementById('reg-tipo').value=r.tipo; document.getElementById('reg-processo').value=r.numeroProcesso||'';
+            
+            document.getElementById('juris-rows-container').innerHTML = '';
+            if(r.jurisdicionadosArr && r.jurisdicionadosArr.length) { r.jurisdicionadosArr.forEach(j => addJurisRow(j)); } 
+            else if(r.jurisdicionado) { addJurisRow(r.jurisdicionado); } 
+            else { addJurisRow(); }
+
+            document.getElementById('reg-analista').value=r.analista||'';
+            
+            document.getElementById('mov-rows-container').innerHTML = '';
+            if(r.movimentacoes && r.movimentacoes.length) { r.movimentacoes.forEach(m => addMovRow(m)); } 
+            else if (r.status && (r.tipo === 'Análise' || r.tipo === 'Revisão')) { addMovRow({ status: r.status, data: r.statusUpdatedAt || r.data }); } 
+            else if (r.tipo === 'Análise' || r.tipo === 'Revisão') { addMovRow(); }
+
+            document.getElementById('reg-decisoes').value = (r.decisoes||[]).join(', ');
+            document.getElementById('reg-teses').value = (r.teses||[]).join(', ');
+            if (editors.registro) editors.registro.root.innerHTML = r.observacoes || '';
+            
+            document.getElementById('leg-rows-container').innerHTML = '';
+            if(r.legislacaoComplexa && r.legislacaoComplexa.length) { r.legislacaoComplexa.forEach(l => addLegRow(l)); }
+            
+            toggleFields();
+        };
+
+        // --- TRAMITAÇÃO (Tabela & KANBAN) ---
+        window.setTramiteView = (view) => {
+            state.tramiteView = view; localStorage.setItem('gj_tramite_view', view);
+            document.getElementById('tramitacao-table-view').style.display = view === 'table' ? 'block' : 'none';
+            document.getElementById('tramitacao-kanban-view').style.display = view === 'kanban' ? 'grid' : 'none';
+            document.getElementById('btn-view-table').className = view === 'table' ? 'px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg bg-white shadow-sm text-primary transition-all' : 'px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg text-slate-500 hover:text-slate-800 transition-all';
+            document.getElementById('btn-view-kanban').className = view === 'kanban' ? 'px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg bg-white shadow-sm text-primary transition-all' : 'px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg text-slate-500 hover:text-slate-800 transition-all';
+            renderTramitacao();
+        };
+
+        function renderTramitacao() {
+            const hide = document.getElementById('hide-encerrados').checked;
+            const search = document.getElementById('search-tramite').value.toLowerCase();
+            let list = state.registros.filter(r => r.tipo === 'Análise' || r.tipo === 'Revisão');
+            if(hide) list = list.filter(r => (r.status || 'em_andamento') !== 'encerrado');
+            if(search) list = list.filter(r => (r.numeroProcesso||'').toLowerCase().includes(search) || (r.jurisdicionado||'').toLowerCase().includes(search));
+
+            if(state.tramiteView === 'table') {
+                const dir = state.sortTramite.dir === 'asc' ? 1 : -1;
+                list.sort((a,b) => {
+                    const valA = a[state.sortTramite.field] || ''; const valB = b[state.sortTramite.field] || '';
+                    return valA.toString().localeCompare(valB.toString()) * dir;
+                });
+                document.getElementById('table-tramite-body').innerHTML = list.map(r => `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-5 py-4 font-mono font-bold text-slate-800 cursor-pointer hover:text-primary text-sm" onclick="openDossie('${r.numeroProcesso}')">${r.numeroProcesso || '—'}</td>
+                        <td class="px-5 py-4 text-[9px] font-black uppercase text-slate-400 tracking-widest">${r.tipo}</td>
+                        <td class="px-5 py-4 text-xs font-bold text-slate-600 truncate max-w-[200px]">${r.jurisdicionado ? r.jurisdicionado.replace(/;/g, ' &bull; ') : '—'}</td>
+                        <td class="px-5 py-4">
+                            <select onchange="updateTramite('${r.id}', this.value)" class="text-[9px] font-black p-2 border border-slate-200 rounded-lg outline-none focus:border-primary bg-white shadow-sm transition-all uppercase tracking-widest">
+                                <option value="em_andamento" ${r.status==='em_andamento'?'selected':''}>🟢 Andamento</option>
+                                <option value="chefe_gabinete" ${r.status==='chefe_gabinete'?'selected':''}>🔵 Chefe de Gabinete</option>
+                                <option value="conselheiro" ${r.status==='conselheiro'?'selected':''}>🟣 Conselheiro</option>
+                                <option value="encerrado" ${r.status==='encerrado'?'selected':''}>⚫ Encerrado</option>
+                            </select>
+                        </td>
+                        <td class="px-5 py-4"><input type="date" value="${r.statusUpdatedAt || ''}" onchange="updateTramiteData('${r.id}', this.value)" class="text-[10px] font-black text-slate-500 border border-transparent hover:border-slate-200 focus:border-primary bg-transparent focus:bg-white p-1.5 rounded-lg cursor-pointer transition-all"></td>
+                    </tr>`).join('');
+            } else {
+                const cols = [
+                    { id: 'em_andamento', title: 'Em Andamento', color: 'border-success/30 bg-success/5 text-success', dot: 'bg-success' },
+                    { id: 'chefe_gabinete', title: 'C. Gabinete', color: 'border-info/30 bg-info/5 text-info', dot: 'bg-info' },
+                    { id: 'conselheiro', title: 'Conselheiro', color: 'border-process/30 bg-process/5 text-process', dot: 'bg-process' },
+                    { id: 'encerrado', title: 'Encerrados', color: 'border-closed/30 bg-closed/5 text-closed', dot: 'bg-closed' }
+                ];
+                document.getElementById('tramitacao-kanban-view').innerHTML = cols.map(c => {
+                    const cards = list.filter(r => (r.status || 'em_andamento') === c.id);
+                    return `
+                        <div class="border border-slate-100 rounded-3xl p-4 flex flex-col kanban-column shadow-sm transition-colors" ondragover="allowDrop(event)" ondrop="dropCard(event, '${c.id}')" ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+                            <div class="flex items-center justify-between mb-4 px-1">
+                                <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full ${c.dot}"></div><span class="text-[9px] font-black uppercase tracking-widest text-slate-600">${c.title}</span></div>
+                                <span class="text-[10px] font-black bg-white border border-slate-100 rounded-md px-2 py-1 shadow-sm">${cards.length}</span>
+                            </div>
+                            <div class="flex-1 space-y-3 overflow-y-auto max-h-[65vh] pr-1 pb-4">
+                                ${cards.map(r => `
+                                    <div draggable="true" ondragstart="drag(event, '${r.id}')" class="kanban-card bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-primary/40 transition-all group relative" onclick="openDossie('${r.numeroProcesso}')">
+                                        <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-slate-300"><i data-lucide="grip-vertical" class="w-4 h-4"></i></div>
+                                        <div class="text-xs font-mono font-black text-slate-800 mb-1.5 group-hover:text-primary transition-colors">${r.numeroProcesso || 'Extra'}</div>
+                                        <div class="text-[10px] font-bold text-slate-500 truncate mb-3">${r.jurisdicionado ? r.jurisdicionado.split(';')[0] : '—'}</div>
+                                        <div class="flex justify-between items-center pt-2 border-t border-slate-50">
+                                            <span class="text-[8px] font-black uppercase tracking-widest bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded text-slate-500">${r.tipo}</span>
+                                            <span class="text-[9px] font-bold text-slate-400"><i data-lucide="clock" class="inline w-2.5 h-2.5 mr-1"></i>${r.statusUpdatedAt ? r.statusUpdatedAt.split('-').reverse().join('/') : ''}</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>`;
+                }).join('');
+                lucide.createIcons();
+            }
+        }
+
+        window.sortTramite = (f) => { if(state.sortTramite.field === f) state.sortTramite.dir = state.sortTramite.dir === 'asc' ? 'desc' : 'asc'; else { state.sortTramite.field = f; state.sortTramite.dir = 'desc'; } renderTramitacao(); };
+        
+        window.updateTramite = (id, s) => { 
+            const r=state.registros.find(x=>x.id===id); 
+            const today = new Date().toISOString().split('T')[0];
+            r.status=s; r.statusUpdatedAt = today; 
+            if(!r.movimentacoes) r.movimentacoes = [];
+            r.movimentacoes.push({ status: s, data: today });
+            saveAll(); renderTramitacao(); 
+        };
+        
+        window.updateTramiteData = (id, val) => { 
+            const r=state.registros.find(x=>x.id===id); r.statusUpdatedAt=val; 
+            if(r.movimentacoes && r.movimentacoes.length) { r.movimentacoes[r.movimentacoes.length-1].data = val; }
+            saveAll(); renderTramitacao(); 
+        };
+        
+        window.allowDrop = (e) => { e.preventDefault(); };
+        window.drag = (e, id) => { e.dataTransfer.setData("text", id); e.target.style.opacity = '0.5'; };
+        window.dropCard = (e, statusId) => {
+            e.preventDefault(); document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-over'));
+            const id = e.dataTransfer.getData("text"); if(id) { updateTramite(id, statusId); }
+        };
+        document.addEventListener('dragend', (e) => { if(e.target.classList.contains('kanban-card')) e.target.style.opacity = '1'; });
+
+        // --- LEGISLAÇÃO ---
+        window.moveLeg = (lei, dir) => {
+            const currentLeis = [...new Set(state.registros.flatMap(r => (r.legislacaoComplexa||[]).map(l=>l.lei)))];
+            const order = state.legOrder.length ? state.legOrder : currentLeis;
+            const idx = order.indexOf(lei); const nIdx = idx + dir;
+            if(nIdx < 0 || nIdx >= order.length) return;
+            order.splice(idx, 1); order.splice(nIdx, 0, lei);
+            state.legOrder = order; localStorage.setItem('gj_leg_order', JSON.stringify(order)); renderLegislacao();
+        };
+
+        function renderLegislacao() {
+            const map = {}; state.registros.forEach(r => { (r.legislacaoComplexa || []).forEach(l => { if(!map[l.lei]) map[l.lei] = {}; const artK = l.art || 'Geral'; if(!map[l.lei][artK]) map[l.lei][artK] = { desc: l.desc, refs: [] }; map[l.lei][artK].refs.push(r); }); });
+            const currentLeis = Object.keys(map); const order = state.legOrder.filter(l => currentLeis.includes(l)); currentLeis.forEach(l => { if(!order.includes(l)) order.push(l); });
+            const naturalSort = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+            document.getElementById('legislacao-list').innerHTML = order.map(lei => {
+                const id = `lei-${lei.replace(/\s+/g, '-')}`; const arts = Object.keys(map[lei]).sort(naturalSort);
+                return `<div class="bg-white border border-slate-100 rounded-[1.5rem] overflow-hidden group shadow-sm mb-4">
+                        <div class="flex items-center">
+                            <button onclick="this.parentElement.nextElementSibling.classList.toggle('hidden')" class="flex-1 flex justify-between p-5 font-black text-slate-800 hover:bg-slate-50 transition-all text-left text-sm">
+                                <span class="flex items-center gap-3"><div class="p-2 bg-primary/10 text-primary rounded-lg"><i data-lucide="book-open" class="w-4 h-4"></i></div> ${lei}</span>
+                                <span class="text-[9px] bg-white border border-slate-200 text-slate-500 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest shadow-sm">${Object.keys(map[lei]).length} artigos catalogados</span>
+                            </button>
+                            <div class="px-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onclick="moveLeg('${lei}', -1)" class="w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full hover:bg-primary hover:text-white transition-colors shadow-sm"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+                                <button onclick="moveLeg('${lei}', 1)" class="w-8 h-8 flex items-center justify-center bg-slate-50 rounded-full hover:bg-primary hover:text-white transition-colors shadow-sm"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+                            </div>
+                        </div>
+                        <div class="hidden p-6 space-y-6 border-t border-slate-100 bg-white">
+                            ${arts.map(art => `<div class="space-y-3"><div class="flex items-start gap-4"><div class="px-3 py-1.5 bg-slate-800 text-white text-[9px] font-black rounded-lg uppercase tracking-widest shadow-md shrink-0 mt-1">${art}</div><div class="text-xs font-bold text-slate-600 whitespace-pre-wrap rich-content">${map[lei][art].desc || 'Sem identificação'}</div></div><div class="flex flex-wrap gap-2 pl-16 md:pl-[4.5rem]">${map[lei][art].refs.map(r => `<span onclick="openDossie('${r.numeroProcesso}')" class="text-[9px] font-mono font-black bg-slate-50 border border-slate-200 px-2 py-1 rounded-md cursor-pointer hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm">${r.numeroProcesso || 'Extra'}</span>`).join('')}</div></div>`).join('<hr class="border-slate-100 my-6">')}
+                        </div></div>`;
+            }).join(''); lucide.createIcons();
+        }
+
+        // --- GESTÃO DE TAGS (Teses, Decisões, Leis, Jurisdicionados) ---
+        function renderManageTags() {
+            const tSet = new Set(); const dSet = new Set(); const lSet = new Set(); const jSet = new Set();
+            state.registros.forEach(r => { 
+                (r.teses || []).forEach(t => tSet.add(t)); 
+                (r.decisoes || []).forEach(d => dSet.add(d)); 
+                (r.legislacaoComplexa || []).forEach(l => lSet.add(l.lei)); 
+                if(r.jurisdicionadosArr) r.jurisdicionadosArr.forEach(j => jSet.add(j));
+                else if(r.jurisdicionado) r.jurisdicionado.split(';').forEach(j => jSet.add(j.trim()));
+            });
+            
+            const rL = (id, set, type, label, icon, color) => {
+                document.getElementById(id).innerHTML = `<div class="flex items-center gap-2 mb-4"><div class="p-1.5 rounded-lg bg-${color}-50 text-${color}-600"><i data-lucide="${icon}" class="w-4 h-4"></i></div><h3 class="font-black text-slate-800 text-sm tracking-tight">${label}</h3></div>` + Array.from(set).sort().map(tag => `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 border border-transparent rounded-xl mb-2 group hover:border-slate-200 transition-all">
+                        <span class="text-xs font-bold text-slate-700">${tag}</span>
+                        <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onclick="renameTag('${tag}', '${type}')" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded-md hover:text-primary shadow-sm"><i data-lucide="edit-3" class="w-3 h-3"></i></button>
+                            <button onclick="deleteTagGlobally('${tag}', '${type}')" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded-md hover:text-destructive hover:bg-red-50 shadow-sm"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                        </div>
+                    </div>`).join('') || '<p class="text-slate-400 italic text-xs font-medium">Nenhuma tag registrada.</p>';
+            };
+            rL('manage-juris', jSet, 'juris', 'Jurisdicionados', 'building', 'info');
+            rL('manage-teses', tSet, 'tese', 'Teses e Fundamentos', 'tag', 'primary');
+            rL('manage-decisoes', dSet, 'decisao', 'Decisões Propostas', 'gavel', 'violet');
+            rL('manage-leis', lSet, 'lei', 'Leis Principais', 'book', 'slate');
+            lucide.createIcons();
+        }
+
+        window.renameTag = (old, type) => {
+            const n = prompt(`Renomear "${old}" para:`, old); if(!n || n === old) return;
+            state.registros.forEach(r => {
+                if(type === 'tese' && r.teses) r.teses = r.teses.map(t => t === old ? n : t);
+                if(type === 'decisao' && r.decisoes) r.decisoes = r.decisoes.map(d => d === old ? n : d);
+                if(type === 'lei' && r.legislacaoComplexa) r.legislacaoComplexa.forEach(l => { if(l.lei === old) l.lei = n; });
+                if(type === 'juris') {
+                    if(r.jurisdicionadosArr) r.jurisdicionadosArr = r.jurisdicionadosArr.map(j => j === old ? n : j);
+                    r.jurisdicionado = (r.jurisdicionadosArr || []).join('; ');
+                }
+            });
+            saveAll(); refreshAll();
+        };
+
+        window.deleteTagGlobally = (tag, type) => {
+            if(!confirm(`Apagar a tag "${tag}" de TODOS os registros?`)) return;
+            state.registros.forEach(r => {
+                if(type === 'tese' && r.teses) r.teses = r.teses.filter(t => t !== tag);
+                if(type === 'decisao' && r.decisoes) r.decisoes = r.decisoes.filter(d => d !== tag);
+                if(type === 'lei' && r.legislacaoComplexa) r.legislacaoComplexa = r.legislacaoComplexa.filter(l => l.lei !== tag);
+                if(type === 'juris') {
+                    if(r.jurisdicionadosArr) r.jurisdicionadosArr = r.jurisdicionadosArr.filter(j => j !== tag);
+                    r.jurisdicionado = (r.jurisdicionadosArr || []).join('; ');
+                }
+            });
+            saveAll(); refreshAll();
+        };
+
+        // --- PENDÊNCIAS E REUNIÕES ---
+        function renderPendencias() {
+            document.getElementById('pendencias-list').innerHTML = state.pendencias.map(p => `
+                <div class="bg-white border border-slate-100 p-6 rounded-[2rem] flex gap-5 items-start group shadow-soft hover:shadow-lg transition-all">
+                    <input type="checkbox" ${p.done?'checked':''} onchange="togglePen('${p.id}')" class="w-6 h-6 mt-1 accent-primary cursor-pointer border-2 shadow-sm rounded-md">
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-black text-xl text-slate-800 ${p.done?'line-through text-slate-300':''} cursor-pointer tracking-tight" onclick="document.getElementById('pdet-${p.id}').classList.toggle('hidden')">${p.titulo}</h4>
+                            <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onclick="openModalPendencia('${p.id}')" class="w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:text-primary shadow-sm"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                                <button onclick="deletePen('${p.id}')" class="w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:text-destructive hover:bg-red-50 shadow-sm"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                            </div>
+                        </div>
+                        <div id="pdet-${p.id}" class="hidden mt-4 pt-4 border-t border-slate-100 rich-content text-slate-600 bg-slate-50/50 p-4 rounded-xl border">${p.detalhes}</div>
+                    </div>
+                </div>`).join('') || '<div class="py-16 text-center border-2 border-dashed border-slate-200 rounded-[2rem]"><p class="text-slate-400 font-black uppercase tracking-[0.2em] text-xs">Nenhuma pendência ativa</p></div>';
+            lucide.createIcons();
+        }
+
+        function openModalPendencia(id = null) {
+            document.getElementById('pen-id').value = id || '';
+            document.getElementById('pen-modal-title').innerText = id ? "Editar Tarefa" : "Nova Tarefa";
+            if(id) { const p = state.pendencias.find(x=>x.id===id); document.getElementById('pen-titulo').value = p.titulo; editors.pendencia.root.innerHTML = p.detalhes; } 
+            else { document.getElementById('pen-titulo').value = ''; editors.pendencia.root.innerHTML = ''; }
+            document.getElementById('modal-pendencia').classList.remove('hidden');
+        }
+
+        window.savePendencia = () => {
+            const id = document.getElementById('pen-id').value; const t = document.getElementById('pen-titulo').value; if(!t) return;
+            const data = { titulo: t, detalhes: editors.pendencia.root.innerHTML, done: false };
+            if(id) { const idx = state.pendencias.findIndex(x=>x.id===id); state.pendencias[idx] = {...state.pendencias[idx], ...data}; } 
+            else { state.pendencias.unshift({ id: crypto.randomUUID(), ...data }); }
+            saveAll(); document.getElementById('modal-pendencia').classList.add('hidden'); renderPendencias();
+        };
+
+        function renderReunioes() {
+            document.getElementById('reunioes-list').innerHTML = state.reunioes.sort((a,b)=>new Date(b.data)-new Date(a.data)).map(r => `
+                <div class="bg-white border border-slate-100 p-6 rounded-[2rem] space-y-4 group relative shadow-soft hover:shadow-md transition-all">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[9px] font-black bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg text-slate-500 uppercase tracking-widest flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3"></i> ${r.data.split('-').reverse().join('/')}</span>
+                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onclick="openModalReuniao('${r.id}')" class="w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:text-primary shadow-sm"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                            <button onclick="deleteReu('${r.id}')" class="w-8 h-8 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-lg hover:text-destructive hover:bg-red-50 shadow-sm"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
+                    <h3 class="font-black text-xl text-slate-800 tracking-tight">${r.titulo}</h3>
+                    <div class="text-xs text-slate-600 rich-content line-clamp-3 bg-slate-50 p-4 rounded-xl border border-slate-100">${r.notas}</div>
+                    <button onclick="this.previousElementSibling.classList.toggle('line-clamp-3')" class="text-[9px] font-black uppercase text-primary tracking-widest hover:underline pt-1">Expandir / Ocultar</button>
+                </div>`).join('') || '<div class="col-span-2 py-16 text-center border-2 border-dashed border-slate-200 rounded-[2rem]"><p class="text-slate-400 font-black uppercase tracking-[0.2em] text-xs">Sem atas registradas</p></div>';
+            lucide.createIcons();
+        }
+
+        function openModalReuniao(id = null) {
+            document.getElementById('reu-id').value = id || '';
+            document.getElementById('reu-modal-title').innerText = id ? "Editar Ata" : "Nova Ata";
+            if(id) { const r = state.reunioes.find(x=>x.id===id); document.getElementById('reu-data').value = r.data; document.getElementById('reu-titulo').value = r.titulo; editors.reuniao.root.innerHTML = r.notas; } 
+            else { document.getElementById('reu-data').value = new Date().toISOString().split('T')[0]; document.getElementById('reu-titulo').value = ''; editors.reuniao.root.innerHTML = ''; }
+            document.getElementById('modal-reuniao').classList.remove('hidden');
+        }
+
+        window.saveReuniao = () => {
+            const id = document.getElementById('reu-id').value; const t = document.getElementById('reu-titulo').value; if(!t) return;
+            const data = { data: document.getElementById('reu-data').value, titulo: t, notas: editors.reuniao.root.innerHTML };
+            if(id) { const idx = state.reunioes.findIndex(x=>x.id===id); state.reunioes[idx] = {...state.reunioes[idx], ...data}; } 
+            else { state.reunioes.unshift({ id: crypto.randomUUID(), ...data }); }
+            saveAll(); document.getElementById('modal-reuniao').classList.add('hidden'); renderReunioes();
+        };
+
+        function renderConceitos() {
+            document.getElementById('conceitos-list').innerHTML = state.conceitos.map(c => `
+                <div class="bg-white p-6 border border-slate-100 rounded-[2rem] shadow-sm relative group hover:shadow-md transition-all">
+                    <button onclick="deleteConceito('${c.id}')" class="absolute top-5 right-5 w-7 h-7 flex items-center justify-center bg-white border border-slate-200 rounded-lg text-slate-300 hover:text-destructive hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all shadow-sm"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-primary flex items-center justify-center mb-3"><i data-lucide="lightbulb" class="w-5 h-5"></i></div>
+                    <h4 class="font-black text-xl text-slate-800 mb-3 tracking-tight">${c.nome}</h4>
+                    <div class="text-xs rich-content text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-100">${c.conteudo}</div>
+                </div>`).join(''); lucide.createIcons();
+        }
+        document.getElementById('form-conceito').onsubmit = (e) => { e.preventDefault(); state.conceitos.push({ id: crypto.randomUUID(), nome: document.getElementById('conc-nome').value, conteudo: editors.conceito.root.innerHTML }); saveAll(); e.target.reset(); editors.conceito.root.innerHTML=''; renderConceitos(); };
+
+        // --- ESTATÍSTICAS (Gráfico Multicor no Topo) ---
+        function renderEstatisticas() {
+            const aMap = {}; state.registros.filter(r=>r.tipo==='Revisão'&&r.analista).forEach(r=>aMap[r.analista]=(aMap[r.analista]||0)+1);
+            renderChart('container-analistas', 'chart-analistas', aMap, '#2563eb', 'Revisões por Analista');
+            const rMap = {}; state.registros.filter(r=>r.tipo==='Correção'&&r.analista).forEach(r=>rMap[r.analista]=(rMap[r.analista]||0)+1);
+            renderChart('container-revisores', 'chart-revisores', rMap, '#f59e0b', 'Correções por Revisor');
+            
+            const mMap = {}; state.registros.forEach(r => { const k=r.data.substring(0,7); if(!mMap[k]) mMap[k]={'Análise':0,'Revisão':0,'Correção':0,'Pauta':0,'Curso':0,t:0}; mMap[k][r.tipo]++; mMap[k].t++; });
+            const sk = Object.keys(mMap).sort();
+            
+            document.getElementById('stat-mensal-body').innerHTML = sk.map(m => `<tr class="hover:bg-slate-50"><td class="p-3 font-black text-slate-500">${m}</td><td class="p-3">${mMap[m].Análise}</td><td class="p-3">${mMap[m].Revisão}</td><td class="p-3">${mMap[m].Correção}</td><td class="p-3">${mMap[m].Pauta}</td><td class="p-3">${mMap[m].Curso}</td><td class="p-3 font-black text-primary bg-blue-50/50">${mMap[m].t}</td></tr>`).join('');
+            
+            if(charts.mensal) charts.mensal.destroy();
+            const ctx = document.getElementById('chart-mensal').getContext('2d');
+            
+            charts.mensal = new Chart(ctx, { 
+                type: 'line', 
+                data: { 
+                    labels: sk, 
+                    datasets: [
+                        { label: 'Análises', data: sk.map(m=>mMap[m]['Análise']), borderColor: '#2563eb', backgroundColor: '#2563eb', tension: 0.4, borderWidth: 2, pointRadius: 3 },
+                        { label: 'Revisões', data: sk.map(m=>mMap[m]['Revisão']), borderColor: '#7c3aed', backgroundColor: '#7c3aed', tension: 0.4, borderWidth: 2, pointRadius: 3 },
+                        { label: 'Correções', data: sk.map(m=>mMap[m]['Correção']), borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: 0.4, borderWidth: 2, pointRadius: 3 },
+                        { label: 'Pautas', data: sk.map(m=>mMap[m]['Pauta']), borderColor: '#64748b', backgroundColor: '#64748b', tension: 0.4, borderWidth: 2, pointRadius: 3 },
+                        { label: 'Cursos', data: sk.map(m=>mMap[m]['Curso']), borderColor: '#10b981', backgroundColor: '#10b981', tension: 0.4, borderWidth: 2, pointRadius: 3 }
+                    ] 
+                },
+                options: {
+                    plugins: { legend: { display: true, position: 'bottom', labels: { usePointStyle: true, boxWidth: 6 } } },
+                    scales: { x: { grid: { display: false } }, y: { beginAtZero: true, border: { dash: [4, 4] } } },
+                    interaction: { mode: 'index', intersect: false }
+                }
+            });
+        }
+        
+        function renderChart(contId, id, map, color, label) {
+            document.getElementById(contId).innerHTML = `<div class="flex items-center gap-2 mb-4"><div class="w-3 h-3 rounded-full" style="background-color:${color}"></div><h3 class="font-black text-slate-800 text-sm tracking-tight">${label}</h3></div><canvas id="${id}" height="120"></canvas>`;
+            const ctx = document.getElementById(id).getContext('2d'); const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0, 5);
+            if(charts[id]) charts[id].destroy();
+            charts[id] = new Chart(ctx, { type: 'bar', data: { labels: sorted.map(x=>x[0]), datasets: [{ data: sorted.map(x=>x[1]), backgroundColor: color, borderRadius: 6 }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { grid: { color: '#f1f5f9' }, beginAtZero: true } } } });
+        }
+
+        // --- BUSCA GLOBAL INTEGRADA ---
+        function setSearchFilter(id, label) { state.searchFilter = id; document.getElementById('search-filter-label').innerText = label; document.getElementById('search-filter-menu').classList.add('hidden'); }
+        
+        function initGlobalSearch() {
+            const input = document.getElementById('global-search'); const drop = document.getElementById('search-dropdown');
+            const filterBtn = document.getElementById('btn-search-filter'); const filterMenu = document.getElementById('search-filter-menu');
+            
+            filterBtn.onclick = (e) => { e.stopPropagation(); filterMenu.classList.toggle('hidden'); };
+            document.onclick = (e) => { if(!e.target.closest('.group')) { filterMenu.classList.add('hidden'); drop.classList.add('hidden'); } };
+
+            input.oninput = (e) => {
+                const q = e.target.value.toLowerCase().trim(); if(q.length < 2) { drop.classList.add('hidden'); return; }
+                const words = q.split(/\s+/); let html = '';
+                
+                if(state.searchFilter === 'all' || state.searchFilter === 'registros') {
+                    const res = state.registros.filter(r => {
+                        const text = [r.numeroProcesso, r.jurisdicionado, r.observacoes, r.categoria, ...(r.teses||[]), (r.legislacaoComplexa||[]).map(l=>l.lei+l.art+l.desc).join(' '), (r.decisoes||[]).join(' ')].join(' ').toLowerCase();
+                        return words.every(w => text.includes(w));
+                    }).slice(0, 6);
+                    if(res.length) html += `<div class="p-2 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2"><i data-lucide="file-text" class="w-3 h-3"></i> Processos & Registros</div>` + res.map(r => `
+                        <div onclick="openDossie('${r.numeroProcesso}'); document.getElementById('search-dropdown').classList.add('hidden'); document.getElementById('global-search').value='';" class="p-3 hover:bg-slate-50 cursor-pointer rounded-xl border border-transparent hover:border-slate-200 transition-all mb-2 flex justify-between items-center group/item shadow-sm bg-white">
+                            <div>
+                                <div class="text-xs font-mono font-black text-slate-800 group-hover/item:text-primary transition-colors">${r.numeroProcesso || 'Extra'}</div>
+                                <div class="text-[10px] font-bold text-slate-500 mt-1">${r.jurisdicionado ? r.jurisdicionado.split(';')[0] : 'Sem jurisdicionado'}</div>
+                            </div>
+                            <span class="text-[9px] bg-slate-100 border border-slate-200 px-2 py-1 rounded-md font-black uppercase text-slate-500 tracking-widest">${r.tipo}</span>
+                        </div>`).join('');
+                }
+
+                if(state.searchFilter === 'all' || state.searchFilter === 'conceitos') {
+                    const res = state.conceitos.filter(c => words.every(w => (c.nome + c.conteudo).toLowerCase().includes(w))).slice(0,3);
+                    if(res.length) html += `<div class="p-2 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-4 flex items-center gap-2"><i data-lucide="lightbulb" class="w-3 h-3"></i> Conceitos</div>` + res.map(c => `<div onclick="navigateTo('conceitos'); document.getElementById('search-dropdown').classList.add('hidden');" class="p-3 hover:bg-blue-50 cursor-pointer rounded-xl mb-2 text-xs font-black text-primary border border-transparent hover:border-blue-100 shadow-sm bg-white transition-all">${c.nome}</div>`).join('');
+                }
+
+                drop.innerHTML = html || `<div class="p-8 text-center"><i data-lucide="search-x" class="w-6 h-6 text-slate-300 mx-auto mb-2"></i><p class="text-slate-400 font-black uppercase tracking-widest text-[10px]">Nenhum resultado</p></div>`;
+                drop.classList.remove('hidden'); lucide.createIcons();
+            };
+        }
+
+        // --- UTILITÁRIOS FINAIS E BACKUP ---
+        function initEditors() {
+            const tb = [['bold', 'italic', 'underline'], [{ 'list': 'ordered'}, { 'list': 'bullet' }]];
+            editors.registro = new Quill('#reg-editor', { theme: 'snow', modules: { toolbar: tb } });
+            editors.pendencia = new Quill('#pen-editor', { theme: 'snow', modules: { toolbar: tb } });
+            editors.reuniao = new Quill('#reu-editor', { theme: 'snow', modules: { toolbar: tb } });
+            editors.conceito = new Quill('#conc-editor', { theme: 'snow', modules: { toolbar: tb } });
+        }
+        function openModal() { document.getElementById('form-registro').reset(); editors.registro.root.innerHTML=''; document.getElementById('reg-id').value=''; document.getElementById('leg-rows-container').innerHTML=''; document.getElementById('mov-rows-container').innerHTML=''; document.getElementById('juris-rows-container').innerHTML=''; document.getElementById('modal-registro').classList.remove('hidden'); toggleFields(); addLegRow(); addMovRow(); addJurisRow(); }
+        function closeModal() { document.getElementById('modal-registro').classList.add('hidden'); }
+        function saveAll() { localStorage.setItem('gj_registros', JSON.stringify(state.registros)); localStorage.setItem('gj_reunioes', JSON.stringify(state.reunioes)); localStorage.setItem('gj_pendencias', JSON.stringify(state.pendencias)); localStorage.setItem('gj_conceitos', JSON.stringify(state.conceitos)); updateDatalists(); }
+        function logout() { sessionStorage.removeItem('gj_auth'); location.reload(); }
+        window.deleteReg = (id) => { if(confirm("Apagar permanentemente?")) { state.registros = state.registros.filter(x=>x.id!==id); saveAll(); renderRegistros(); }};
+        window.deletePen = (id) => { if(confirm("Apagar tarefa?")) { state.pendencias=state.pendencias.filter(x=>x.id!==id); saveAll(); renderPendencias(); } };
+        window.deleteReu = (id) => { if(confirm("Apagar ata?")) { state.reunioes=state.reunioes.filter(x=>x.id!==id); saveAll(); renderReunioes(); } };
+        window.deleteConceito = (id) => { if(confirm("Apagar conceito?")) { state.conceitos=state.conceitos.filter(x=>x.id!==id); saveAll(); renderConceitos(); } };
+        
+        function updateDatalists() {
+            const u = (f) => [...new Set(state.registros.map(r=>r[f]).filter(Boolean))].sort();
+            document.getElementById('list-juris').innerHTML = u('jurisdicionado').map(v=>`<option value="${v}">`).join('');
+            document.getElementById('list-analistas').innerHTML = u('analista').map(v=>`<option value="${v}">`).join('');
+            
+            const leis = new Set();
+            state.registros.forEach(r => { (r.legislacaoComplexa || []).forEach(l => { if(l.lei) leis.add(l.lei); }); });
+            document.getElementById('list-leis').innerHTML = Array.from(leis).sort().map(v=>`<option value="${v}">`).join('');
+        }
+        
+        function initBackup() {
+            const z = document.getElementById('backup-zone');
+            z.innerHTML = `<button onclick="exportData()" class="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all mb-2"><div class="p-1 bg-slate-800 rounded-md text-white"><i data-lucide="download" class="w-3.5 h-3.5"></i></div> Exportar</button><button onclick="document.getElementById('ifile').click()" class="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all"><div class="p-1 bg-slate-800 rounded-md text-white"><i data-lucide="upload" class="w-3.5 h-3.5"></i></div> Restaurar</button><input type="file" id="ifile" class="hidden" accept=".json" onchange="importData(event)">`;
+            lucide.createIcons();
+        }
+        window.exportData = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' })); a.download = `Controle-Trabalho-Backup.json`; a.click(); };
+        window.importData = (e) => { const r = new FileReader(); r.onload = (evt) => { const d = JSON.parse(evt.target.result); if(confirm("Atenção! Isso substituirá seus dados atuais de forma irreversível. Confirmar?")) { localStorage.setItem('gj_registros', JSON.stringify(d.registros||[])); localStorage.setItem('gj_conceitos', JSON.stringify(d.conceitos||[])); localStorage.setItem('gj_reunioes', JSON.stringify(d.reunioes||[])); localStorage.setItem('gj_pendencias', JSON.stringify(d.pendencias||[])); location.reload(); } }; r.readAsText(e.target.files[0]); };
+    </script>
+</body>
+</html>
